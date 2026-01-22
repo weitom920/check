@@ -63,7 +63,7 @@
   <select id="presetLocation" onchange="applyPreset()"></select>
 
   <label>GPS 位置</label>
-  <input id="location" placeholder="貼上地圖連結或輸入地址" />
+  <input id="gpsLocation" placeholder="貼上地圖連結或輸入地址" />
 
   <label>拍照存證</label>
   <input id="photo" type="file" accept="image/*" capture="environment" />
@@ -134,8 +134,8 @@ function initPreset() {
 function applyPreset() {
   const office = localStorage.getItem(OFFICE_KEY);
   const custom = JSON.parse(localStorage.getItem(PRESET_KEY) || '[]');
-  if (presetLocation.value === 'office') location.value = office || '';
-  if (presetLocation.value.startsWith('c')) location.value = custom[presetLocation.value.slice(1)].gps;
+  if (presetLocation.value === 'office') gpsLocation.value = office || '';
+  if (presetLocation.value.startsWith('c')) gpsLocation.value = custom[presetLocation.value.slice(1)].gps;
 }
 
 function saveRecord() {
@@ -144,7 +144,7 @@ function saveRecord() {
   reader.onload = () => {
     const dt = new Date(datetime.value);
     const overtime = type.value === '加班' || dt.getHours() >= 18;
-    const record = { name: name.value, type: type.value, datetime: datetime.value, overtime, location: location.value, image: reader.result || null };
+    const record = { name: name.value, type: type.value, datetime: datetime.value, overtime, location: gpsLocation.value, image: reader.result || null };
     const data = JSON.parse(localStorage.getItem(KEY) || '[]');
     data.push(record);
     localStorage.setItem(KEY, JSON.stringify(data));
@@ -243,7 +243,6 @@ function exportPDF() {
     y += 6;
   });
 
-  // 每月加班小計
   doc.addPage();
   doc.setFontSize(13);
   doc.text('每月加班小計', 10, 20);
@@ -261,7 +260,7 @@ function exportPDF() {
 
   doc.save(`打卡紀錄_${user}.pdf`);
 }
-}
+
 
 initPreset();
 load();
