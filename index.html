@@ -47,7 +47,7 @@
   </ol>
 
   <label>姓名</label>
-  <input id="name" />
+  <input id="nameInput" />
 
   <label>打卡類型</label>
   <select id="type">
@@ -94,17 +94,26 @@
 <script>
 const KEY = 'clock_records_v6';
 const OFFICE_KEY = 'office_location';
-const PRESET_KEY = 'preset_locations'; // [{ name, gps }]
+const PRESET_KEY = 'preset_locations';
 const PIN_KEY = 'admin_pin';
 const AUDIT_KEY = 'audit_logs';
 // © WeyCalaw 擁有本系統程式碼版權
+
+// 常用地點預設
+if (!localStorage.getItem(PRESET_KEY)) {
+  localStorage.setItem(PRESET_KEY, JSON.stringify([
+    { name: '公司', gps: '' },
+    { name: '家裡', gps: '' }
+  ]));
+}
 
 let isAdmin = false;
 let adminName = '';
 
 function toggleAdmin() {
   const savedPin = localStorage.getItem(PIN_KEY) || '1234';
-  if (adminPin.value !== savedPin) return alert('PIN 錯誤');
+  const pinInput = document.getElementById('adminPin');
+  if (pinInput.value !== savedPin) return alert('PIN 錯誤');
   adminName = prompt('請輸入管理者姓名（作為操作紀錄）') || '管理者';
   isAdmin = !isAdmin;
   document.body.classList.toggle('admin', isAdmin);
@@ -118,15 +127,17 @@ function logAudit(action, detail) {
 }
 
 function saveOffice() {
-  localStorage.setItem(OFFICE_KEY, officeSetting.value);
-  logAudit('修改辦公室地點', officeSetting.value);
+  const officeInput = document.getElementById('officeSetting');
+  localStorage.setItem(OFFICE_KEY, officeInput.value);
+  logAudit('修改辦公室地點', officeInput.value);
   initPreset();
 }
 
 function initPreset() {
   const office = localStorage.getItem(OFFICE_KEY);
   const custom = JSON.parse(localStorage.getItem(PRESET_KEY) || '[]');
-  presetLocation.innerHTML = '<option value="">請選擇</option>' +
+  const presetSelect = document.getElementById('presetLocation');
+  presetSelect.innerHTML = '<option value="">請選擇</option>' +
     (office ? '<option value="office">辦公室</option>' : '') +
     custom.map((p,i)=>`<option value="c${i}">${p.name}</option>`).join('');
 }
@@ -134,17 +145,38 @@ function initPreset() {
 function applyPreset() {
   const office = localStorage.getItem(OFFICE_KEY);
   const custom = JSON.parse(localStorage.getItem(PRESET_KEY) || '[]');
-  if (presetLocation.value === 'office') gpsLocation.value = office || '';
-  if (presetLocation.value.startsWith('c')) gpsLocation.value = custom[presetLocation.value.slice(1)].gps;
+  const presetSelect = document.getElementById('presetLocation');
+  const gpsInput = document.getElementById('gpsLocation');
+  if (presetSelect.value === 'office') gpsInput.value = office || '';
+  if (presetSelect.value.startsWith('c')) gpsInput.value = custom[presetSelect.value.slice(1)].gps;
 }
 
 function saveRecord() {
+  const nameInput = document.getElementById('nameInput');
+  const datetimeInput = document.getElementById('datetime');
+  const typeSelect = document.getElementById('type');
+  const gpsInput = document.getElementById('gpsLocation');
+  const photoInput = document.getElementById('photo');
+
+  // 防呆提示
+  if (!nameInput.value.trim()) return alert('請填寫姓名');
+  if (!datetimeInput.value) return alert('請選擇日期時間');
+  if (!gpsInput.value.trim()) return alert('請輸入或選擇 GPS 位置');
+  if (!typeSelect.value) return alert('請選擇打卡類型');
+
   const reader = new FileReader();
-  const file = photo.files[0];
+  const file = photoInput.files[0];
   reader.onload = () => {
-    const dt = new Date(datetime.value);
-    const overtime = type.value === '加班' || dt.getHours() >= 18;
-    const record = { name: name.value, type: type.value, datetime: datetime.value, overtime, location: gpsLocation.value, image: reader.result || null };
+    const dt = new Date(datetimeInput.value);
+    const overtime = typeSelect.value === '加班' || dt.getHours() >= 18;
+    const record = {
+      name: nameInput.value,
+      type: typeSelect.value,
+      datetime: datetimeInput.value,
+      overtime,
+      location: gpsInput.value,
+      image: reader.result || null
+    };
     const data = JSON.parse(localStorage.getItem(KEY) || '[]');
     data.push(record);
     localStorage.setItem(KEY, JSON.stringify(data));
@@ -155,7 +187,9 @@ function saveRecord() {
 
 function load() {
   const data = JSON.parse(localStorage.getItem(KEY) || '[]');
-  records.innerHTML = '';
+  const recordsTbody = document.getElementById('records');
+  recordsTbody.innerHTML = '';
+  const summaryDiv = document.getElementById('summary');
   const monthly = {};
 
   data.forEach((r, idx) => {
@@ -170,10 +204,10 @@ function load() {
 
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${r.name}</td><td>${r.type}</td><td>${r.datetime}</td><td>${r.overtime?'是':'否'}</td><td>${locCell}</td><td>${r.image?'<img src="'+r.image+'">':''}</td>`;
-    records.appendChild(tr);
+    recordsTbody.appendChild(tr);
   });
 
-  summary.innerHTML = Object.entries(monthly)
+  summaryDiv.innerHTML = Object.entries(monthly)
     .map(([m,v])=>`📅 ${m}：工時 ${v.work} 小時 / 加班 ${v.overtime} 小時`)
     .join('<br>');
 }
@@ -260,7 +294,6 @@ function exportPDF() {
 
   doc.save(`打卡紀錄_${user}.pdf`);
 }
-
 
 initPreset();
 load();
