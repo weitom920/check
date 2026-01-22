@@ -74,22 +74,21 @@
 <div class="card">
   <h2>📊 月工時統計</h2>
   <div id="summary"></div>
-  <button class="secondary" onclick="exportExcel()">📁 匯出 Excel（含月統計）</button>
 </div>
 
 <div class="card">
   <h2>📄 打卡紀錄（管理模式可修改地點）</h2>
+  <div style="display:flex; gap:8px; margin-bottom:8px;">
+    <button class="secondary" onclick="exportExcel()">📁 匯出 Excel（含月統計）</button>
+    <button class="secondary" onclick="exportPDF()">📄 匯出正式紀錄（PDF）</button>
+  </div>
   <table>
     <thead><tr><th>姓名</th><th>類型</th><th>時間</th><th>加班</th><th>地點</th><th>照片</th></tr></thead>
     <tbody id="records"></tbody>
   </table>
 </div>
 
-<section class="card">
-  <h3>📄 匯出正式紀錄（PDF）</h3>
-  <p>依目前資料產出正式 PDF（含姓名首頁、固定表頭、跨頁）。</p>
-  <button type="button" onclick="exportPDF()">⬇️ 匯出 PDF</button>
-</section>
+
 
 <audio id="ding" src="https://www.soundjay.com/button/beep-07.wav" preload="auto"></audio>
 
@@ -225,77 +224,121 @@ function updateLocation(index, value) {
 }
 
 function exportExcel() {
-  const data = JSON.parse(localStorage.getItem(KEY) || '[]');
-  if (!data.length) return alert('沒有資料可匯出');
-  const ws1 = XLSX.utils.json_to_sheet(data.map(r => ({
-    姓名: r.name,
-    類型: r.type,
-    時間: r.datetime,
-    加班: r.overtime?'是':'否',
-    地點: r.location
-  })));
-  const summary = {};
-  data.forEach(r => {
-    const m = r.datetime.slice(0,7);
-    if (!summary[m]) summary[m] = { 月份: m, 工時:0, 加班:0 };
-    if (r.type==='下班') summary[m].工時 += 8;
-    if (r.overtime) summary[m].加班 +=1;
-  });
-  const ws2 = XLSX.utils.json_to_sheet(Object.values(summary));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws1, '打卡紀錄');
-  XLSX.utils.book_append_sheet(wb, ws2, '月統計');
-  XLSX.writeFile(wb, 'clock_records.xlsx');
-  alert('✅ Excel 匯出完成');
+  try {
+    const data = JSON.parse(localStorage.getItem(KEY) || '[]');
+    if (!data.length) return alert('沒有資料可匯出');
+
+    const ws1 = XLSX.utils.json_to_sheet(data.map(r => ({
+      姓名: r.name,
+      類型: r.type,
+      時間: r.datetime,
+      加班: r.overtime ? '是' : '否',
+      地點: r.location
+    })));
+
+    const monthly = {};
+    data.forEach(r => {
+      const m = r.datetime.slice(0,7);
+      if (!monthly[m]) monthly[m] = { 月份: m, 工時: 0, 加班: 0 };
+      if (r.type === '下班') monthly[m].工時 += 8;
+      if (r.overtime) monthly[m].加班 += 1;
+    });
+    const ws2 = XLSX.utils.json_to_sheet(Object.values(monthly));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws1, '打卡紀錄');
+    XLSX.utils.book_append_sheet(wb, ws2, '月統計');
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'clock_records.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    alert('✅ Excel 匯出完成，請選擇儲存位置');
+  } catch (e) {
+    alert('❌ 匯出失敗: ' + e);
+    console.error(e);
+  }
+}
 }
 
-function exportPDF() {
-  const { jsPDF } = window.jspdf;
-  const data = JSON.parse(localStorage.getItem(KEY) || '[]');
-  if (!data.length) return alert('沒有資料可匯出');
-  const user = data[0]?.name || '';
-  const doc = new jsPDF();
-  const now = new Date();
+async function exportPDF() {
+  try {
+    const { jsPDF } = window.jspdf;
+    const data = JSON.parse(localStorage.getItem(KEY) || '[]');
+    if (!data.length) return alert('沒有資料可匯出');
 
-  let y = 20;
-  doc.setFontSize(14);
-  doc.text('上下班 / 加班打卡紀錄', 10, y);
-  y += 8;
-  doc.setFontSize(11);
-  doc.text(`姓名：${user}`, 10, y);
-  y += 6;
-  doc.text(`匯出者：${adminName || '本人'}`, 10, y);
-  y += 6;
-  doc.text(`匯出時間：${now.toLocaleString()}`, 10, y);
-  y += 10;
+    const user = data[0]?.name || '';
+    const doc = new jsPDF();
+    const now = new Date();
 
-  const header = ['姓名','類型','時間','加班','地點'];
-  const drawHeader = () => {
-    doc.setFontSize(10);
-    let x = 10;
-    header.forEach(h => { doc.text(h, x, y); x += 38; });
+    let y = 20;
+    doc.setFontSize(14);
+    doc.text('上下班 / 加班打卡紀錄', 10, y);
+    y += 8;
+    doc.setFontSize(11);
+    doc.text(`姓名：${user}`, 10, y);
     y += 6;
-  };
-
-  drawHeader();
-  data.forEach(r => {
-    if (y > 280) { doc.addPage(); y = 20; drawHeader(); }
-    const row = [r.name,r.type,r.datetime,r.overtime?'是':'否',r.location];
-    let x = 10;
-    row.forEach(c => { doc.text(String(c), x, y); x += 38; });
+    doc.text(`匯出者：${adminName || '本人'}`, 10, y);
     y += 6;
-  });
+    doc.text(`匯出時間：${now.toLocaleString()}`, 10, y);
+    y += 10;
 
-  const monthly = {};
-  data.forEach(r => { const m = r.datetime.slice(0,7); if(!monthly[m]) monthly[m]=0; if(r.overtime) monthly[m]+=1; });
-  doc.addPage();
-  doc.setFontSize(13);
-  doc.text('每月加班小計', 10, 20);
-  let yy = 30;
-  Object.entries(monthly).forEach(([m,v]) => { doc.text(`${m}：加班 ${v} 小時`, 10, yy); yy+=8; });
+    const header = ['姓名', '類型', '時間', '加班', '地點'];
+    const drawHeader = () => {
+      doc.setFontSize(10);
+      let x = 10;
+      header.forEach(h => { doc.text(h, x, y); x += 38; });
+      y += 6;
+    };
+    drawHeader();
 
-  doc.save(`打卡紀錄_${user}.pdf`);
-  alert('✅ PDF 匯出完成');
+    data.forEach(r => {
+      if (y > 280) { doc.addPage(); y = 20; drawHeader(); }
+      let x = 10;
+      [r.name, r.type, r.datetime, r.overtime ? '是' : '否', r.location]
+        .forEach(c => { doc.text(String(c), x, y); x += 38; });
+      y += 6;
+    });
+
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `打卡紀錄_${user}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    alert('✅ PDF 匯出完成，請選擇儲存位置');
+  } catch (e) {
+    alert('❌ PDF 匯出失敗: ' + e);
+    console.error(e);
+  }
+}
+      let x = 10;
+      [r.name,r.type,r.datetime,r.overtime?'是':'否',r.location].forEach(c => { doc.text(String(c), x, y); x += 38; });
+      y += 6;
+    });
+
+    const monthly = {};
+    data.forEach(r => { const m = r.datetime.slice(0,7); if(!monthly[m]) monthly[m]=0; if(r.overtime) monthly[m]+=1; });
+    doc.addPage();
+    doc.setFontSize(13);
+    doc.text('每月加班小計', 10, 20);
+    let yy = 30;
+    Object.entries(monthly).forEach(([m,v]) => { doc.text(`${m}：加班 ${v} 小時`, 10, yy); yy+=8; });
+
+    doc.save(`打卡紀錄_${user}.pdf`);
+    alert('✅ PDF 匯出完成');
+  } catch(e) { alert('❌ PDF 匯出失敗: '+e); console.error(e); }
 }
 
 initPreset();
