@@ -5,34 +5,48 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>上下班 / 加班打卡（本機儲存）</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <style>
-    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#f5f7fa; padding:16px; }
-    h1 { font-size:1.4rem; }
-    .card { background:#fff; border-radius:12px; padding:16px; box-shadow:0 4px 12px rgba(0,0,0,0.08); margin-bottom:16px; }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#fff7ed; padding:16px; }
+    h1 { font-size:1.6rem; color:#92400e; }
+    h2 { color:#b45309; }
+    .card { background:#fffbeb; border-radius:16px; padding:16px; box-shadow:0 6px 16px rgba(0,0,0,0.08); margin-bottom:16px; }
     label { display:block; margin-top:12px; font-weight:600; }
-    input, select, button { width:100%; padding:10px; margin-top:6px; border-radius:8px; border:1px solid #ccc; font-size:1rem; }
-    button { background:#2563eb; color:#fff; border:none; margin-top:12px; }
-    button.secondary { background:#6b7280; }
+    input, select, button { width:100%; padding:10px; margin-top:6px; border-radius:10px; border:1px solid #d6d3d1; font-size:1rem; }
+    button { background:#f59e0b; color:#78350f; border:none; margin-top:12px; font-weight:600; }
+    button.secondary { background:#fde68a; }
     table { width:100%; border-collapse:collapse; margin-top:12px; }
-    th, td { border-bottom:1px solid #e5e7eb; padding:8px; font-size:0.8rem; }
-    img { max-width:60px; border-radius:6px; }
+    th, td { border-bottom:1px solid #fde68a; padding:8px; font-size:0.8rem; }
+    img { max-width:60px; border-radius:8px; }
+    .admin-only { display:none; }
+    body.admin .admin-only { display:block; }
   </style>
 </head>
 <body>
-<h1>📱 上下班 / 加班打卡（自動判斷加班）</h1>
+<h1>☀️ 上下班 / 加班打卡</h1>
 
 <div class="card">
-  <h2>📍 如何手動取得 GPS 位置（請照下面步驟）</h2>
-  <ol style="font-size:0.9rem; line-height:1.6; padding-left:18px;">
-    <li>開啟 <b>Google Maps</b></li>
-    <li>長按你目前所在的位置（出現紅色圖釘）</li>
-    <li>點選「分享」</li>
-    <li>選擇「複製連結」</li>
-    <li>將連結貼到下方的「GPS 位置」欄位</li>
-  </ol>
-  <p style="font-size:0.85rem; color:#555;">※ 若無法使用 Google Maps，也可直接輸入地址或地點名稱。</p>
+  <h2>🔐 管理模式</h2>
+  <input id="adminPin" type="password" placeholder="輸入管理 PIN（預設 1234）" />
+  <button class="secondary" onclick="toggleAdmin()">進入 / 離開 管理模式</button>
+</div>
 
-  <label>姓名</label></label>
+<div class="card admin-only">
+  <h2>🏢 管理：辦公室地點</h2>
+  <input id="officeSetting" placeholder="貼上 Google Maps 連結或地址" />
+  <button onclick="saveOffice()">💾 儲存 / 修改 辦公室地點</button>
+</div>
+
+<div class="card">
+  <h2>📍 手動取得 GPS 位置</h2>
+  <ol style="font-size:0.9rem; line-height:1.6; padding-left:18px;">
+    <li>開啟 Google Maps</li>
+    <li>長按目前位置</li>
+    <li>分享 → 複製連結</li>
+    <li>貼到 GPS 欄位</li>
+  </ol>
+
+  <label>姓名</label>
   <input id="name" />
 
   <label>打卡類型</label>
@@ -45,98 +59,96 @@
   <label>日期時間</label>
   <input id="datetime" type="datetime-local" />
 
-  <label>常用地點快速選擇</label>
+  <label>常用地點</label>
   <select id="presetLocation" onchange="applyPreset()"></select>
 
-  <label>設定：辦公室地點（僅存本機）</label>
-  <input id="officeSetting" placeholder="貼上辦公室 Google Maps 連結或地址" />
-  <button type="button" class="secondary" onclick="saveOffice()">💾 儲存辦公室地點</button>
+  <label>GPS 位置</label>
+  <input id="location" placeholder="貼上地圖連結或輸入地址" />
 
-  <label>GPS 位置（手動輸入 / 貼上地圖連結）</label>
-  <input id="location" placeholder="請輸入地址 或 貼上 Google Maps 連結" />
+  <label>拍照存證</label>
+  <input id="photo" type="file" accept="image/*" capture="environment" />
 
-  <!-- GPS 自動取得已移除，避免瀏覽器權限問題 -->
-
-  <button style="display:none" onclick="getLocation()">📍 取得位置</button>
   <button onclick="saveRecord()">✅ 打卡</button>
 </div>
 
 <div class="card">
-  <h2>📊 工時統計</h2>
+  <h2>📊 月工時統計</h2>
   <div id="summary"></div>
-  <button class="secondary" onclick="exportExcel()">📁 匯出 Excel</button>
+  <button class="secondary" onclick="exportExcel()">📁 匯出 Excel（含月統計）</button>
 </div>
 
 <div class="card">
-  <h2>📄 打卡紀錄</h2>
+  <h2>📄 打卡紀錄（管理模式可修改地點）</h2>
   <table>
-    <thead>
-      <tr><th>姓名</th><th>類型</th><th>時間</th><th>是否加班</th><th>GPS</th><th>照片</th></tr>
-    </thead>
+    <thead><tr><th>姓名</th><th>類型</th><th>時間</th><th>加班</th><th>地點</th><th>照片</th></tr></thead>
     <tbody id="records"></tbody>
   </table>
 </div>
 
-<script>
-const KEY = 'clock_records_v3';
-const OFFICE_KEY = 'office_location';
-const WORK_END_HOUR = 18; // 18:00 後自動算加班
+<section class="card">
+  <h3>📄 匯出正式紀錄（PDF）</h3>
+  <p>依目前資料產出正式 PDF（含姓名首頁、固定表頭、跨頁）。</p>
+  <button type="button" onclick="exportPDF()">⬇️ 匯出 PDF</button>
+</section>
 
-function getLocation() {
-  navigator.geolocation.getCurrentPosition(p => {
-    location.value = `https://www.google.com/maps?q=${p.coords.latitude},${p.coords.longitude}`;
-  });
+<script>
+const KEY = 'clock_records_v6';
+const OFFICE_KEY = 'office_location';
+const PRESET_KEY = 'preset_locations'; // [{ name, gps }]
+const PIN_KEY = 'admin_pin';
+const AUDIT_KEY = 'audit_logs';
+// © WeyCalaw 擁有本系統程式碼版權
+
+let isAdmin = false;
+let adminName = '';
+
+function toggleAdmin() {
+  const savedPin = localStorage.getItem(PIN_KEY) || '1234';
+  if (adminPin.value !== savedPin) return alert('PIN 錯誤');
+  adminName = prompt('請輸入管理者姓名（作為操作紀錄）') || '管理者';
+  isAdmin = !isAdmin;
+  document.body.classList.toggle('admin', isAdmin);
+  load();
+}
+
+function logAudit(action, detail) {
+  const logs = JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]');
+  logs.push({ time: new Date().toISOString(), admin: adminName, action, detail });
+  localStorage.setItem(AUDIT_KEY, JSON.stringify(logs));
+}
+
+function saveOffice() {
+  localStorage.setItem(OFFICE_KEY, officeSetting.value);
+  logAudit('修改辦公室地點', officeSetting.value);
+  initPreset();
+}
+
+function initPreset() {
+  const office = localStorage.getItem(OFFICE_KEY);
+  const custom = JSON.parse(localStorage.getItem(PRESET_KEY) || '[]');
+  presetLocation.innerHTML = '<option value="">請選擇</option>' +
+    (office ? '<option value="office">辦公室</option>' : '') +
+    custom.map((p,i)=>`<option value="c${i}">${p.name}</option>`).join('');
+}
+
+function applyPreset() {
+  const office = localStorage.getItem(OFFICE_KEY);
+  const custom = JSON.parse(localStorage.getItem(PRESET_KEY) || '[]');
+  if (presetLocation.value === 'office') location.value = office || '';
+  if (presetLocation.value.startsWith('c')) location.value = custom[presetLocation.value.slice(1)].gps;
 }
 
 function saveRecord() {
-  const dt = new Date(datetime.value);
-  const isOvertime = dt.getHours() >= WORK_END_HOUR;
   const reader = new FileReader();
   const file = photo.files[0];
-
   reader.onload = () => {
-    const record = { name: name.value, type: type.value, datetime: datetime.value, overtime: isOvertime, location: location.value, image: reader.result || null };
+    const dt = new Date(datetime.value);
+    const overtime = type.value === '加班' || dt.getHours() >= 18;
+    const record = { name: name.value, type: type.value, datetime: datetime.value, overtime, location: location.value, image: reader.result || null };
     const data = JSON.parse(localStorage.getItem(KEY) || '[]');
     data.push(record);
     localStorage.setItem(KEY, JSON.stringify(data));
     load();
-initPreset();
-
-function initPreset() {
-  const office = localStorage.getItem(OFFICE_KEY) || '';
-  officeSetting.value = office;
-  presetLocation.innerHTML = `
-    <option value="">請選擇常用地點</option>
-    ${office ? `<option value="office">辦公室</option>` : ''}
-    <option value="custom">外勤 / 工地（自行輸入）</option>`;
-}
-
-function saveOffice() {
-  if (!officeSetting.value) return alert('請輸入辦公室地點');
-  localStorage.setItem(OFFICE_KEY, officeSetting.value);
-  alert('辦公室地點已儲存（僅此裝置）');
-  initPreset();
-}
-
-function applyPreset() {
-  const v = presetLocation.value;
-  if (v === 'office') {
-    location.value = localStorage.getItem(OFFICE_KEY) || '';
-  }
-  if (v === 'custom') {
-    location.value = '';
-  }
-}
-
-function applyPreset() {
-  const v = presetLocation.value;
-  if (!v) return;
-  if (v.includes('｜')) {
-    location.value = v.split('｜')[1];
-  } else {
-    location.value = v;
-  }
-}
   };
   if (file) reader.readAsDataURL(file); else reader.onload();
 }
@@ -144,29 +156,114 @@ function applyPreset() {
 function load() {
   const data = JSON.parse(localStorage.getItem(KEY) || '[]');
   records.innerHTML = '';
-  let total = 0, overtime = 0;
+  const monthly = {};
 
-  data.forEach(r => {
-    if (r.type === '下班') {
-      total += 8;
-      if (r.overtime) overtime += (new Date(r.datetime).getHours() - WORK_END_HOUR);
-    }
+  data.forEach((r, idx) => {
+    const m = r.datetime.slice(0,7);
+    if (!monthly[m]) monthly[m] = { work:0, overtime:0 };
+    if (r.type === '下班') monthly[m].work += 8;
+    if (r.overtime) monthly[m].overtime += 1;
+
+    const locCell = isAdmin
+      ? `<input value="${r.location}" onchange="updateLocation(${idx}, this.value)">`
+      : r.location;
+
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${r.name}</td><td>${r.type}</td><td>${r.datetime}</td><td>${r.overtime ? '是' : '否'}</td><td><a href='${r.location}' target='_blank'>地圖</a></td><td>${r.image ? `<img src='${r.image}'>` : ''}</td>`;
+    tr.innerHTML = `<td>${r.name}</td><td>${r.type}</td><td>${r.datetime}</td><td>${r.overtime?'是':'否'}</td><td>${locCell}</td><td>${r.image?'<img src="'+r.image+'">':''}</td>`;
     records.appendChild(tr);
   });
 
-  summary.innerHTML = `🕒 總工時：約 ${total} 小時<br>⏱️ 加班：約 ${overtime} 小時`;
+  summary.innerHTML = Object.entries(monthly)
+    .map(([m,v])=>`📅 ${m}：工時 ${v.work} 小時 / 加班 ${v.overtime} 小時`)
+    .join('<br>');
+}
+
+function updateLocation(index, value) {
+  const data = JSON.parse(localStorage.getItem(KEY) || '[]');
+  const old = data[index].location;
+  data[index].location = value;
+  localStorage.setItem(KEY, JSON.stringify(data));
+  logAudit('修改打卡地點', `第${index+1}筆：${old} → ${value}`);
 }
 
 function exportExcel() {
   const data = JSON.parse(localStorage.getItem(KEY) || '[]');
-  const ws = XLSX.utils.json_to_sheet(data);
+  const ws1 = XLSX.utils.json_to_sheet(data);
+  const summary = {};
+  data.forEach(r=>{
+    const m = r.datetime.slice(0,7);
+    if (!summary[m]) summary[m] = { 月份:m, 工時:0, 加班:0 };
+    if (r.type==='下班') summary[m].工時 += 8;
+    if (r.overtime) summary[m].加班 += 1;
+  });
+  const ws2 = XLSX.utils.json_to_sheet(Object.values(summary));
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '打卡紀錄');
+  XLSX.utils.book_append_sheet(wb, ws1, '打卡紀錄');
+  XLSX.utils.book_append_sheet(wb, ws2, '月統計');
   XLSX.writeFile(wb, 'clock_records.xlsx');
 }
 
+function exportPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const data = JSON.parse(localStorage.getItem(KEY) || '[]');
+  const user = data[0]?.name || '';
+  const now = new Date();
+
+  let y = 20;
+  doc.setFontSize(14);
+  doc.text('上下班 / 加班打卡紀錄', 10, y);
+  y += 8;
+  doc.setFontSize(11);
+  doc.text(`姓名：${user}`, 10, y);
+  y += 6;
+  doc.text(`匯出者：${adminName || '本人'}`, 10, y);
+  y += 6;
+  doc.text(`匯出時間：${now.toLocaleString()}`, 10, y);
+  y += 10;
+
+  const header = ['姓名','類型','時間','加班','地點'];
+  const drawHeader = () => {
+    doc.setFontSize(10);
+    let x = 10;
+    header.forEach(h => { doc.text(h, x, y); x += 38; });
+    y += 6;
+  };
+
+  drawHeader();
+  data.forEach(r => {
+    if (y > 280) {
+      doc.addPage();
+      y = 20;
+      drawHeader();
+    }
+    const row = [r.name, r.type, r.datetime, r.overtime?'是':'否', r.location];
+    let x = 10;
+    row.forEach(c => { doc.text(String(c), x, y); x += 38; });
+    y += 6;
+  });
+
+  // 每月加班小計
+  doc.addPage();
+  doc.setFontSize(13);
+  doc.text('每月加班小計', 10, 20);
+  const monthly = {};
+  data.forEach(r => {
+    const m = r.datetime.slice(0,7);
+    if (!monthly[m]) monthly[m] = 0;
+    if (r.overtime) monthly[m] += 1;
+  });
+  let yy = 30;
+  Object.entries(monthly).forEach(([m,v]) => {
+    doc.text(`${m}：加班 ${v} 小時`, 10, yy);
+    yy += 8;
+  });
+
+  doc.save(`打卡紀錄_${user}.pdf`);
+}
+}
+
+initPreset();
 load();
 </script>
 </body>
