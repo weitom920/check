@@ -51,6 +51,7 @@
 
   <label>打卡類型</label>
   <select id="type">
+    <option value="">請選擇</option>
     <option value="上班">上班</option>
     <option value="下班">下班</option>
     <option value="加班">加班</option>
@@ -88,11 +89,10 @@
   </table>
 </div>
 
-
-
 <audio id="ding" src="https://www.soundjay.com/button/beep-07.wav" preload="auto"></audio>
 
 <script>
+// WeyCalaw 擁有版權
 const KEY = 'clock_records_v6';
 const OFFICE_KEY = 'office_location';
 const PRESET_KEY = 'preset_locations';
@@ -110,73 +110,51 @@ if (!localStorage.getItem(PRESET_KEY)) {
 
 function toggleAdmin() {
   const savedPin = localStorage.getItem(PIN_KEY) || '1234';
-  const pinInput = document.getElementById('adminPin');
-  if (pinInput.value !== savedPin) return alert('PIN 錯誤');
-  adminName = prompt('請輸入管理者姓名（作為操作紀錄）') || '管理者';
+  if (document.getElementById('adminPin').value !== savedPin) return alert('PIN 錯誤');
+  adminName = prompt('請輸入管理者姓名') || '管理者';
   isAdmin = !isAdmin;
   document.body.classList.toggle('admin', isAdmin);
   load();
 }
 
-function logAudit(action, detail) {
-  const logs = JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]');
-  logs.push({ time: new Date().toISOString(), admin: adminName, action, detail });
-  localStorage.setItem(AUDIT_KEY, JSON.stringify(logs));
-}
-
 function saveOffice() {
-  const officeInput = document.getElementById('officeSetting');
-  localStorage.setItem(OFFICE_KEY, officeInput.value);
-  logAudit('修改辦公室地點', officeInput.value);
+  const v = document.getElementById('officeSetting').value;
+  localStorage.setItem(OFFICE_KEY, v);
   initPreset();
-  load();
 }
 
 function initPreset() {
   const office = localStorage.getItem(OFFICE_KEY);
   const custom = JSON.parse(localStorage.getItem(PRESET_KEY) || '[]');
-  const presetSelect = document.getElementById('presetLocation');
-  presetSelect.innerHTML = '<option value="">請選擇</option>' +
-    (office ? '<option value="office">辦公室</option>' : '') +
-    custom.map((p,i)=>`<option value="c${i}">${p.name}</option>`).join('');
+  const s = document.getElementById('presetLocation');
+  s.innerHTML = '<option value="">請選擇</option>' + (office ? '<option value="office">公司</option>' : '') + custom.map((p,i)=>`<option value="c${i}">${p.name}</option>`).join('');
 }
 
 function applyPreset() {
   const office = localStorage.getItem(OFFICE_KEY);
   const custom = JSON.parse(localStorage.getItem(PRESET_KEY) || '[]');
-  const presetSelect = document.getElementById('presetLocation');
-  const gpsInput = document.getElementById('gpsLocation');
-  if (presetSelect.value === 'office') gpsInput.value = office || '';
-  if (presetSelect.value.startsWith('c')) gpsInput.value = custom[presetSelect.value.slice(1)].gps;
+  const s = document.getElementById('presetLocation');
+  const g = document.getElementById('gpsLocation');
+  if (s.value === 'office') g.value = office || '';
+  if (s.value.startsWith('c')) g.value = custom[s.value.slice(1)].gps || '';
 }
 
 function saveRecord() {
-  const nameInput = document.getElementById('nameInput');
-  const datetimeInput = document.getElementById('datetime');
-  const typeSelect = document.getElementById('type');
-  const gpsInput = document.getElementById('gpsLocation');
-  const presetSelect = document.getElementById('presetLocation');
-  const photoInput = document.getElementById('photo');
+  const name = document.getElementById('nameInput').value.trim();
+  const datetime = document.getElementById('datetime').value;
+  const type = document.getElementById('type').value;
+  const gps = document.getElementById('gpsLocation').value.trim();
+  const preset = document.getElementById('presetLocation').value;
+  const photo = document.getElementById('photo').files[0];
 
-  if (!nameInput.value.trim()) return alert('請填寫姓名');
-  if (!datetimeInput.value) return alert('請選擇日期時間');
-  if (!gpsInput.value.trim() && !presetSelect.value) return alert('請輸入 GPS 位置或選擇常用地點');
-  if (!typeSelect.value) return alert('請選擇打卡類型');
+  if (!name) return alert('請填寫姓名');
+  if (!datetime) return alert('請選擇日期時間');
+  if (!gps && !preset) return alert('請輸入 GPS 或選擇常用地點');
+  if (!type) return alert('請選擇打卡類型');
 
   const reader = new FileReader();
-  const file = photoInput.files[0];
   reader.onload = () => {
-    const dt = new Date(datetimeInput.value);
-    const overtime = typeSelect.value === '加班' || dt.getHours() >= 18;
-    const locationValue = gpsInput.value.trim() || (presetSelect.value === 'office' ? localStorage.getItem(OFFICE_KEY) : JSON.parse(localStorage.getItem(PRESET_KEY))[presetSelect.value.slice(1)].gps);
-    const record = {
-      name: nameInput.value,
-      type: typeSelect.value,
-      datetime: datetimeInput.value,
-      overtime,
-      location: locationValue,
-      image: reader.result || null
-    };
+    const record = { name, type, datetime, overtime: type==='加班', location: gps, image: reader.result||null };
     const data = JSON.parse(localStorage.getItem(KEY) || '[]');
     data.push(record);
     localStorage.setItem(KEY, JSON.stringify(data));
@@ -184,64 +162,49 @@ function saveRecord() {
     document.getElementById('ding').play();
     alert('✅ 打卡成功');
   };
-  if (file) reader.readAsDataURL(file); else reader.onload();
+  photo ? reader.readAsDataURL(photo) : reader.onload();
 }
 
 function load() {
   const data = JSON.parse(localStorage.getItem(KEY) || '[]');
-  const recordsTbody = document.getElementById('records');
-  recordsTbody.innerHTML = '';
-  const summaryDiv = document.getElementById('summary');
+  const tbody = document.getElementById('records');
+  const summary = document.getElementById('summary');
+  tbody.innerHTML = '';
   const monthly = {};
-
-  data.forEach((r, idx) => {
+  data.forEach((r,i)=>{
     const m = r.datetime.slice(0,7);
-    if (!monthly[m]) monthly[m] = { work:0, overtime:0 };
-    if (r.type === '下班') monthly[m].work += 8;
-    if (r.overtime) monthly[m].overtime += 1;
-
-    const locCell = isAdmin
-      ? `<input value="${r.location}" onchange="updateLocation(${idx}, this.value)" style='width:100%'>`
-      : r.location;
-
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${r.name}</td><td>${r.type}</td><td>${r.datetime}</td><td>${r.overtime?'是':'否'}</td><td>${locCell}</td><td>${r.image?'<img src="'+r.image+'">':''}</td>`;
-    recordsTbody.appendChild(tr);
+    monthly[m] = monthly[m]||{work:0,overtime:0};
+    if(r.type==='下班') monthly[m].work+=8;
+    if(r.overtime) monthly[m].overtime+=1;
+    const loc = isAdmin ? `<input value="${r.location}" onchange="updateLocation(${i},this.value)">` : r.location;
+    tbody.innerHTML += `<tr><td>${r.name}</td><td>${r.type}</td><td>${r.datetime}</td><td>${r.overtime?'是':'否'}</td><td>${loc}</td><td>${r.image?'<img src='+r.image+'>':''}</td></tr>`;
   });
-
-  summaryDiv.innerHTML = Object.entries(monthly)
-    .map(([m,v])=>`📅 ${m}：工時 ${v.work} 小時 / 加班 ${v.overtime} 小時`)
-    .join('<br>');
+  summary.innerHTML = Object.entries(monthly).map(([m,v])=>`${m}：工時 ${v.work} / 加班 ${v.overtime}`).join('<br>');
 }
 
-function updateLocation(index, value) {
-  const data = JSON.parse(localStorage.getItem(KEY) || '[]');
-  const old = data[index].location;
-  data[index].location = value;
-  localStorage.setItem(KEY, JSON.stringify(data));
-  logAudit('修改打卡地點', `第${index+1}筆：${old} → ${value}`);
-  load();
-}
+function updateLocation(i,v){const d=JSON.parse(localStorage.getItem(KEY)||'[]');d[i].location=v;localStorage.setItem(KEY,JSON.stringify(d));load();}
 
 function exportExcel() {
   try {
     const data = JSON.parse(localStorage.getItem(KEY) || '[]');
     if (!data.length) return alert('沒有資料可匯出');
 
-    const ws1 = XLSX.utils.json_to_sheet(data.map(r => ({
+    const rows = data.map(r => ({
       姓名: r.name,
       類型: r.type,
-      時間: r.datetime,
-      加班: r.overtime ? '是' : '否',
+      日期時間: r.datetime,
+      是否加班: r.overtime ? '是' : '否',
       地點: r.location
-    })));
+    }));
+
+    const ws1 = XLSX.utils.json_to_sheet(rows);
 
     const monthly = {};
     data.forEach(r => {
       const m = r.datetime.slice(0,7);
-      if (!monthly[m]) monthly[m] = { 月份: m, 工時: 0, 加班: 0 };
+      if (!monthly[m]) monthly[m] = { 月份: m, 工時: 0, 加班次數: 0 };
       if (r.type === '下班') monthly[m].工時 += 8;
-      if (r.overtime) monthly[m].加班 += 1;
+      if (r.overtime) monthly[m].加班次數 += 1;
     });
     const ws2 = XLSX.utils.json_to_sheet(Object.values(monthly));
 
@@ -252,9 +215,10 @@ function exportExcel() {
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
+
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'clock_records.xlsx';
+    a.download = '打卡紀錄.xlsx';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -262,25 +226,23 @@ function exportExcel() {
 
     alert('✅ Excel 匯出完成，請選擇儲存位置');
   } catch (e) {
-    alert('❌ 匯出失敗: ' + e);
     console.error(e);
+    alert('❌ Excel 匯出失敗');
   }
 }
-}
-
-async function exportPDF() {
+function exportPDF() {
   try {
     const { jsPDF } = window.jspdf;
     const data = JSON.parse(localStorage.getItem(KEY) || '[]');
     if (!data.length) return alert('沒有資料可匯出');
 
     const user = data[0]?.name || '';
-    const doc = new jsPDF();
     const now = new Date();
+    const doc = new jsPDF();
 
     let y = 20;
     doc.setFontSize(14);
-    doc.text('上下班 / 加班打卡紀錄', 10, y);
+    doc.text('上下班 / 加班打卡正式紀錄', 10, y);
     y += 8;
     doc.setFontSize(11);
     doc.text(`姓名：${user}`, 10, y);
@@ -290,17 +252,21 @@ async function exportPDF() {
     doc.text(`匯出時間：${now.toLocaleString()}`, 10, y);
     y += 10;
 
-    const header = ['姓名', '類型', '時間', '加班', '地點'];
+    const header = ['姓名','類型','時間','加班','地點'];
     const drawHeader = () => {
-      doc.setFontSize(10);
       let x = 10;
+      doc.setFontSize(10);
       header.forEach(h => { doc.text(h, x, y); x += 38; });
       y += 6;
     };
-    drawHeader();
 
+    drawHeader();
     data.forEach(r => {
-      if (y > 280) { doc.addPage(); y = 20; drawHeader(); }
+      if (y > 280) {
+        doc.addPage();
+        y = 20;
+        drawHeader();
+      }
       let x = 10;
       [r.name, r.type, r.datetime, r.overtime ? '是' : '否', r.location]
         .forEach(c => { doc.text(String(c), x, y); x += 38; });
@@ -319,26 +285,9 @@ async function exportPDF() {
 
     alert('✅ PDF 匯出完成，請選擇儲存位置');
   } catch (e) {
-    alert('❌ PDF 匯出失敗: ' + e);
     console.error(e);
+    alert('❌ PDF 匯出失敗');
   }
-}
-      let x = 10;
-      [r.name,r.type,r.datetime,r.overtime?'是':'否',r.location].forEach(c => { doc.text(String(c), x, y); x += 38; });
-      y += 6;
-    });
-
-    const monthly = {};
-    data.forEach(r => { const m = r.datetime.slice(0,7); if(!monthly[m]) monthly[m]=0; if(r.overtime) monthly[m]+=1; });
-    doc.addPage();
-    doc.setFontSize(13);
-    doc.text('每月加班小計', 10, 20);
-    let yy = 30;
-    Object.entries(monthly).forEach(([m,v]) => { doc.text(`${m}：加班 ${v} 小時`, 10, yy); yy+=8; });
-
-    doc.save(`打卡紀錄_${user}.pdf`);
-    alert('✅ PDF 匯出完成');
-  } catch(e) { alert('❌ PDF 匯出失敗: '+e); console.error(e); }
 }
 
 initPreset();
