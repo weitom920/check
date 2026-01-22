@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>上下班 / 加班打卡（本機儲存）</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#fff7ed; padding:16px; }
     h1 { font-size:1.6rem; color:#92400e; }
@@ -91,24 +91,23 @@
   <button type="button" onclick="exportPDF()">⬇️ 匯出 PDF</button>
 </section>
 
+<audio id="ding" src="https://www.soundjay.com/button/beep-07.wav" preload="auto"></audio>
+
 <script>
 const KEY = 'clock_records_v6';
 const OFFICE_KEY = 'office_location';
 const PRESET_KEY = 'preset_locations';
 const PIN_KEY = 'admin_pin';
 const AUDIT_KEY = 'audit_logs';
-// © WeyCalaw 擁有本系統程式碼版權
+let isAdmin = false;
+let adminName = '';
 
-// 常用地點預設
 if (!localStorage.getItem(PRESET_KEY)) {
   localStorage.setItem(PRESET_KEY, JSON.stringify([
     { name: '公司', gps: '' },
     { name: '家裡', gps: '' }
   ]));
 }
-
-let isAdmin = false;
-let adminName = '';
 
 function toggleAdmin() {
   const savedPin = localStorage.getItem(PIN_KEY) || '1234';
@@ -131,6 +130,7 @@ function saveOffice() {
   localStorage.setItem(OFFICE_KEY, officeInput.value);
   logAudit('修改辦公室地點', officeInput.value);
   initPreset();
+  load();
 }
 
 function initPreset() {
@@ -156,12 +156,12 @@ function saveRecord() {
   const datetimeInput = document.getElementById('datetime');
   const typeSelect = document.getElementById('type');
   const gpsInput = document.getElementById('gpsLocation');
+  const presetSelect = document.getElementById('presetLocation');
   const photoInput = document.getElementById('photo');
 
-  // 防呆提示
   if (!nameInput.value.trim()) return alert('請填寫姓名');
   if (!datetimeInput.value) return alert('請選擇日期時間');
-  if (!gpsInput.value.trim()) return alert('請輸入或選擇 GPS 位置');
+  if (!gpsInput.value.trim() && !presetSelect.value) return alert('請輸入 GPS 位置或選擇常用地點');
   if (!typeSelect.value) return alert('請選擇打卡類型');
 
   const reader = new FileReader();
@@ -169,18 +169,21 @@ function saveRecord() {
   reader.onload = () => {
     const dt = new Date(datetimeInput.value);
     const overtime = typeSelect.value === '加班' || dt.getHours() >= 18;
+    const locationValue = gpsInput.value.trim() || (presetSelect.value === 'office' ? localStorage.getItem(OFFICE_KEY) : JSON.parse(localStorage.getItem(PRESET_KEY))[presetSelect.value.slice(1)].gps);
     const record = {
       name: nameInput.value,
       type: typeSelect.value,
       datetime: datetimeInput.value,
       overtime,
-      location: gpsInput.value,
+      location: locationValue,
       image: reader.result || null
     };
     const data = JSON.parse(localStorage.getItem(KEY) || '[]');
     data.push(record);
     localStorage.setItem(KEY, JSON.stringify(data));
     load();
+    document.getElementById('ding').play();
+    alert('✅ 打卡成功');
   };
   if (file) reader.readAsDataURL(file); else reader.onload();
 }
@@ -199,7 +202,7 @@ function load() {
     if (r.overtime) monthly[m].overtime += 1;
 
     const locCell = isAdmin
-      ? `<input value="${r.location}" onchange="updateLocation(${idx}, this.value)">`
+      ? `<input value="${r.location}" onchange="updateLocation(${idx}, this.value)" style='width:100%'>`
       : r.location;
 
     const tr = document.createElement('tr');
@@ -218,30 +221,40 @@ function updateLocation(index, value) {
   data[index].location = value;
   localStorage.setItem(KEY, JSON.stringify(data));
   logAudit('修改打卡地點', `第${index+1}筆：${old} → ${value}`);
+  load();
 }
 
 function exportExcel() {
   const data = JSON.parse(localStorage.getItem(KEY) || '[]');
-  const ws1 = XLSX.utils.json_to_sheet(data);
+  if (!data.length) return alert('沒有資料可匯出');
+  const ws1 = XLSX.utils.json_to_sheet(data.map(r => ({
+    姓名: r.name,
+    類型: r.type,
+    時間: r.datetime,
+    加班: r.overtime?'是':'否',
+    地點: r.location
+  })));
   const summary = {};
-  data.forEach(r=>{
+  data.forEach(r => {
     const m = r.datetime.slice(0,7);
-    if (!summary[m]) summary[m] = { 月份:m, 工時:0, 加班:0 };
+    if (!summary[m]) summary[m] = { 月份: m, 工時:0, 加班:0 };
     if (r.type==='下班') summary[m].工時 += 8;
-    if (r.overtime) summary[m].加班 += 1;
+    if (r.overtime) summary[m].加班 +=1;
   });
   const ws2 = XLSX.utils.json_to_sheet(Object.values(summary));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws1, '打卡紀錄');
   XLSX.utils.book_append_sheet(wb, ws2, '月統計');
   XLSX.writeFile(wb, 'clock_records.xlsx');
+  alert('✅ Excel 匯出完成');
 }
 
 function exportPDF() {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
   const data = JSON.parse(localStorage.getItem(KEY) || '[]');
+  if (!data.length) return alert('沒有資料可匯出');
   const user = data[0]?.name || '';
+  const doc = new jsPDF();
   const now = new Date();
 
   let y = 20;
@@ -266,33 +279,23 @@ function exportPDF() {
 
   drawHeader();
   data.forEach(r => {
-    if (y > 280) {
-      doc.addPage();
-      y = 20;
-      drawHeader();
-    }
-    const row = [r.name, r.type, r.datetime, r.overtime?'是':'否', r.location];
+    if (y > 280) { doc.addPage(); y = 20; drawHeader(); }
+    const row = [r.name,r.type,r.datetime,r.overtime?'是':'否',r.location];
     let x = 10;
     row.forEach(c => { doc.text(String(c), x, y); x += 38; });
     y += 6;
   });
 
+  const monthly = {};
+  data.forEach(r => { const m = r.datetime.slice(0,7); if(!monthly[m]) monthly[m]=0; if(r.overtime) monthly[m]+=1; });
   doc.addPage();
   doc.setFontSize(13);
   doc.text('每月加班小計', 10, 20);
-  const monthly = {};
-  data.forEach(r => {
-    const m = r.datetime.slice(0,7);
-    if (!monthly[m]) monthly[m] = 0;
-    if (r.overtime) monthly[m] += 1;
-  });
   let yy = 30;
-  Object.entries(monthly).forEach(([m,v]) => {
-    doc.text(`${m}：加班 ${v} 小時`, 10, yy);
-    yy += 8;
-  });
+  Object.entries(monthly).forEach(([m,v]) => { doc.text(`${m}：加班 ${v} 小時`, 10, yy); yy+=8; });
 
   doc.save(`打卡紀錄_${user}.pdf`);
+  alert('✅ PDF 匯出完成');
 }
 
 initPreset();
